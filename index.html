@@ -399,8 +399,127 @@
   .btn-edit-small:hover { color: var(--gold); border-color: var(--gold); }
 
   /* 空状態 */
+  .empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    min-width: 200px;
+    padding: 40px;
+    color: var(--ink-faint);
+    cursor: pointer;
+  }
+  .empty-state:hover { background: rgba(200,168,75,0.04); }
+  .empty-state .kana {
+    writing-mode: vertical-rl;
+    font-family: 'Shippori Mincho', serif;
+    font-size: 48px;
+    color: var(--paper-shadow);
+    margin-bottom: 16px;
+  }
+  .empty-state p {
+    writing-mode: vertical-rl;
+    font-size: 12px;
+    line-height: 1.8;
+    letter-spacing: 0.15em;
+    color: var(--ink-faint);
+  }
 
-  /* FAB 非表示（列追加ボタンを使う） */
+  /* 検索バー */
+  .search-bar {
+    background: var(--paper-dark);
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--paper-shadow);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .search-input-wrap {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    background: white;
+    border: 1px solid var(--paper-shadow);
+    border-radius: 20px;
+    padding: 5px 12px;
+    gap: 6px;
+    transition: border-color 0.2s;
+  }
+
+  .search-input-wrap:focus-within { border-color: var(--gold); }
+
+  .search-icon { font-size: 13px; color: var(--ink-faint); flex-shrink: 0; }
+
+  .search-input {
+    border: none;
+    outline: none;
+    background: transparent;
+    font-family: 'Noto Serif JP', serif;
+    font-size: 13px;
+    color: var(--ink);
+    width: 100%;
+  }
+  .search-input::placeholder { color: var(--paper-shadow); }
+
+  .search-clear {
+    background: none;
+    border: none;
+    color: var(--ink-faint);
+    font-size: 14px;
+    cursor: pointer;
+    padding: 0;
+    line-height: 1;
+    flex-shrink: 0;
+    display: none;
+  }
+  .search-clear.visible { display: block; }
+
+  .search-count {
+    font-size: 11px;
+    color: var(--ink-faint);
+    white-space: nowrap;
+    letter-spacing: 0.05em;
+    flex-shrink: 0;
+  }
+
+  /* 投句先タブバー */
+  .dest-tab-bar {
+    background: var(--ink);
+    padding: 0 4px;
+    display: flex;
+    gap: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+    border-bottom: 2px solid var(--gold);
+  }
+  .dest-tab-bar::-webkit-scrollbar { display: none; }
+
+  .dest-tab {
+    flex-shrink: 0;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    color: rgba(200,168,75,0.5);
+    padding: 7px 12px;
+    font-family: 'Noto Serif JP', serif;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+    letter-spacing: 0.08em;
+  }
+  .dest-tab:hover { color: var(--gold-light); }
+  .dest-tab.active { color: var(--gold); border-bottom-color: var(--gold); }
+
+  /* 検索ヒット強調 */
+  mark {
+    background: rgba(200,168,75,0.4);
+    color: var(--ink);
+    border-radius: 2px;
+  }
   .fab {
     display: none;
   }
@@ -732,6 +851,22 @@
     </div>
   </div>
 
+  <!-- 検索バー -->
+  <div class="search-bar">
+    <div class="search-input-wrap">
+      <span class="search-icon">🔍</span>
+      <input class="search-input" id="searchInput" type="text" placeholder="句・投句先・備考を検索...">
+      <button class="search-clear" id="searchClear">✕</button>
+    </div>
+    <span class="search-count" id="searchCount"></span>
+  </div>
+
+  <!-- 投句先タブバー -->
+  <div class="dest-tab-bar" id="destTabBar">
+    <button class="dest-tab active" data-dest="all">すべて</button>
+  </div>
+
+  <!-- 投句済フィルター -->
   <div class="filter-bar" id="filterBar">
     <button class="filter-btn active" data-filter="all">すべて</button>
     <button class="filter-btn" data-filter="submitted">投句済</button>
@@ -773,7 +908,8 @@
       </div>
       <div class="form-field">
         <label class="form-label">投句先</label>
-        <input type="text" class="form-input" id="haikuDestination" placeholder="〇〇句会">
+        <input type="text" class="form-input" id="haikuDestination" placeholder="〇〇句会" list="destList" autocomplete="off">
+        <datalist id="destList"></datalist>
       </div>
     </div>
 
@@ -814,6 +950,8 @@ const STORAGE_KEY = 'haiku_notebook_v1';
 let haikus = [];
 let editingId = null;
 let currentFilter = 'all';
+let currentDest = 'all';
+let searchQuery = '';
 let viewingId = null;
 let sortAsc = false;
 
@@ -878,35 +1016,71 @@ document.getElementById('fileInput').addEventListener('change', e => {
   reader.readAsText(file);
 });
 
+// --- 投句先タブ更新 ---
+function updateDestTabs() {
+  const dests = [...new Set(haikus.map(h => h.destination).filter(Boolean))].sort();
+  const bar = document.getElementById('destTabBar');
+  bar.innerHTML = `<button class="dest-tab ${currentDest==='all'?'active':''}" data-dest="all">すべて</button>`
+    + dests.map(d => `<button class="dest-tab ${currentDest===d?'active':''}" data-dest="${escHtml(d)}">${escHtml(d)}</button>`).join('');
+
+  // datalistも更新
+  document.getElementById('destList').innerHTML =
+    dests.map(d => `<option value="${escHtml(d)}">`).join('');
+}
+
+// --- ハイライト ---
+function highlight(text, query) {
+  if (!query) return escHtml(text);
+  const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return escHtml(text).replace(new RegExp(escaped, 'gi'), m => `<mark>${m}</mark>`);
+}
+
 // --- 描画 ---
 function render() {
+  updateDestTabs();
   const list = document.getElementById('haikuList');
-  let filtered = haikus;
-  if (currentFilter === 'submitted') filtered = haikus.filter(h => h.submitted);
-  if (currentFilter === 'pending') filtered = haikus.filter(h => !h.submitted);
+  let filtered = [...haikus];
 
-  // 新しい句が左端＝createdAt降順（flex-direction:row-reverseなので配列はascで渡す）
-  filtered = [...filtered].sort((a, b) => {
-    return sortAsc ? (b.createdAt - a.createdAt) : (a.createdAt - b.createdAt);
-  });
+  // 投句先タブ
+  if (currentDest !== 'all') filtered = filtered.filter(h => h.destination === currentDest);
+
+  // 投句済フィルター
+  if (currentFilter === 'submitted') filtered = filtered.filter(h => h.submitted);
+  if (currentFilter === 'pending')   filtered = filtered.filter(h => !h.submitted);
+
+  // 検索
+  if (searchQuery) {
+    const q = searchQuery.toLowerCase();
+    filtered = filtered.filter(h =>
+      (h.text && h.text.toLowerCase().includes(q)) ||
+      (h.destination && h.destination.toLowerCase().includes(q)) ||
+      (h.note && h.note.toLowerCase().includes(q))
+    );
+  }
+
+  // 件数表示
+  const countEl = document.getElementById('searchCount');
+  countEl.textContent = searchQuery || currentDest !== 'all' ? `${filtered.length}句` : '';
+
+  // ソート（新しい句が左端）
+  filtered.sort((a, b) => sortAsc ? (b.createdAt - a.createdAt) : (a.createdAt - b.createdAt));
 
   if (filtered.length === 0) {
     list.innerHTML = `
       <div class="empty-state" id="emptyAdd">
-        <span class="kana">句</span>
-        <p>句を追加する</p>
+        <span class="kana">${searchQuery ? '無' : '句'}</span>
+        <p>${searchQuery ? '該当なし' : '句を追加する'}</p>
       </div>`;
-    document.getElementById('emptyAdd').addEventListener('click', openAdd);
+    if (!searchQuery) document.getElementById('emptyAdd').addEventListener('click', openAdd);
     return;
   }
 
-  // 左端に「＋追加」列、右から新→古の順
   const cards = filtered.map(h => `
     <div class="haiku-card ${h.submitted ? 'submitted' : ''}" data-id="${h.id}">
-      <div class="haiku-vertical" data-view="${h.id}">${escHtml(h.text)}</div>
+      <div class="haiku-vertical" data-view="${h.id}">${highlight(h.text, searchQuery)}</div>
       <div class="card-bottom">
         ${h.submitted ? `<div class="submitted-badge">✓</div>` : ''}
-        ${h.destination ? `<div class="meta-destination">${escHtml(h.destination)}</div>` : ''}
+        ${h.destination ? `<div class="meta-destination">${highlight(h.destination, searchQuery)}</div>` : ''}
         <div class="meta-date">${formatDateShort(h.date)}</div>
       </div>
       <div class="card-actions">
@@ -920,7 +1094,6 @@ function render() {
 
   list.innerHTML = cards;
 
-  // イベント
   list.querySelectorAll('[data-view]').forEach(el => {
     el.addEventListener('click', () => openView(el.dataset.view));
   });
@@ -931,10 +1104,8 @@ function render() {
     el.addEventListener('click', e => { e.stopPropagation(); openEdit(el.dataset.edit); });
   });
 
-  // 新しい句を追加したとき左端にスクロール
   if (window._scrollToNew) {
-    const wrap = document.getElementById('scrollWrap');
-    wrap.scrollLeft = 0;
+    document.getElementById('scrollWrap').scrollLeft = 0;
     window._scrollToNew = false;
   }
 }
@@ -1104,6 +1275,27 @@ document.querySelectorAll('.modal-overlay').forEach(el => {
   el.addEventListener('click', e => {
     if (e.target === el) el.classList.remove('open');
   });
+});
+
+// 検索
+document.getElementById('searchInput').addEventListener('input', e => {
+  searchQuery = e.target.value.trim();
+  document.getElementById('searchClear').classList.toggle('visible', searchQuery.length > 0);
+  render();
+});
+document.getElementById('searchClear').addEventListener('click', () => {
+  searchQuery = '';
+  document.getElementById('searchInput').value = '';
+  document.getElementById('searchClear').classList.remove('visible');
+  render();
+});
+
+// 投句先タブ
+document.getElementById('destTabBar').addEventListener('click', e => {
+  const tab = e.target.closest('.dest-tab');
+  if (!tab) return;
+  currentDest = tab.dataset.dest;
+  render();
 });
 
 // フィルター
