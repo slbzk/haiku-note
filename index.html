@@ -848,7 +848,6 @@
     <div class="storage-btns">
       <button class="btn-import" onclick="importData()">📥 読込</button>
       <button class="btn-export" onclick="exportData()">📤 保存</button>
-      <button class="btn-import" onclick="checkStorage()" title="ストレージ確認">🔍</button>
     </div>
   </div>
 
@@ -938,6 +937,7 @@
     <div style="display:flex;gap:10px;margin-top:16px">
       <button class="btn-primary" id="viewSubmitBtn" style="margin-top:0">投句済にする</button>
       <button style="flex:0 0 50px;background:none;border:1px solid var(--gold);color:var(--gold);border-radius:8px;font-family:'Noto Serif JP',serif;font-size:13px;cursor:pointer" id="viewEditBtn">編集</button>
+      <button style="flex:0 0 50px;background:none;border:1px solid rgba(200,168,75,0.5);color:var(--gold-light);border-radius:8px;font-size:18px;cursor:pointer;transition:all 0.2s" id="viewCopyBtn" title="クリップボードにコピー">📋</button>
     </div>
   </div>
 </div>
@@ -968,11 +968,7 @@ function load() {
   try {
     const d = localStorage.getItem(STORAGE_KEY);
     haikus = d ? JSON.parse(d) : [];
-    if (!Array.isArray(haikus)) haikus = [];
-  } catch(e) {
-    console.error('load error:', e);
-    haikus = [];
-  }
+  } catch(e) { haikus = []; }
   updateStorageText();
   render();
 }
@@ -981,20 +977,6 @@ function updateStorageText() {
   const submitted = haikus.filter(h => h.submitted).length;
   document.getElementById('storageText').textContent =
     `句数：${haikus.length}句　（投句済：${submitted}句）`;
-}
-
-function checkStorage() {
-  const raw = localStorage.getItem(STORAGE_KEY);
-  if (!raw) {
-    alert('localStorageにデータがありません。\nキー: ' + STORAGE_KEY + '\n\n以前のファイルで📤保存したJSONを📥読込してください。');
-    return;
-  }
-  try {
-    const data = JSON.parse(raw);
-    alert(`ストレージ確認\nキー: ${STORAGE_KEY}\n句数: ${data.length}句\n\n→ リロード(F5)で再読み込みしてみてください。`);
-  } catch(e) {
-    alert('データが壊れています: ' + e.message);
-  }
 }
 
 // --- エクスポート/インポート ---
@@ -1107,6 +1089,7 @@ function render() {
           ${h.submitted ? '投句済' : '投句'}
         </button>
         <button class="btn-edit-small" data-edit="${h.id}">✎ 編集</button>
+        <button class="btn-edit-small" data-copy="${h.id}" title="コピー">📋</button>
       </div>
     </div>
   `).join('');
@@ -1123,7 +1106,9 @@ function render() {
     el.addEventListener('click', e => { e.stopPropagation(); openEdit(el.dataset.edit); });
   });
 
-  if (window._scrollToNew) {
+  list.querySelectorAll('[data-copy]').forEach(el => {
+    el.addEventListener('click', e => { e.stopPropagation(); copyHaiku(el.dataset.copy); });
+  });
     document.getElementById('scrollWrap').scrollLeft = 0;
     window._scrollToNew = false;
   }
@@ -1143,6 +1128,26 @@ function formatDateShort(d) {
 
 function escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// --- コピー ---
+function copyHaiku(id) {
+  const h = haikus.find(h => h.id === id);
+  if (!h) return;
+  navigator.clipboard.writeText(h.text).then(() => {
+    showToast('📋 コピーしました');
+  }).catch(() => {
+    // フォールバック
+    const ta = document.createElement('textarea');
+    ta.value = h.text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    showToast('📋 コピーしました');
+  });
 }
 
 // --- 句操作 ---
@@ -1283,6 +1288,10 @@ document.getElementById('viewSubmitBtn').addEventListener('click', () => {
     if (h.submitted) meta += `　✓ 投句済`;
     document.getElementById('viewMeta').textContent = meta;
   }
+});
+
+document.getElementById('viewCopyBtn').addEventListener('click', () => {
+  if (viewingId) copyHaiku(viewingId);
 });
 
 document.getElementById('viewEditBtn').addEventListener('click', () => {
