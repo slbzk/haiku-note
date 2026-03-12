@@ -938,6 +938,7 @@
     <div style="display:flex;gap:10px;margin-top:16px">
       <button class="btn-primary" id="viewSubmitBtn" style="margin-top:0">投句済にする</button>
       <button style="flex:0 0 50px;background:none;border:1px solid var(--gold);color:var(--gold);border-radius:8px;font-family:'Noto Serif JP',serif;font-size:13px;cursor:pointer" id="viewEditBtn">編集</button>
+      <button style="flex:0 0 50px;background:none;border:1px solid rgba(200,168,75,0.5);color:var(--gold-light);border-radius:8px;font-size:20px;cursor:pointer" id="viewCopyBtn" title="コピー">📋</button>
     </div>
   </div>
 </div>
@@ -1129,6 +1130,29 @@ function render() {
   }
 }
 
+// --- コピー ---
+function copyHaiku(id) {
+  const h = haikus.find(h => h.id === id);
+  if (!h) return;
+  const text = h.text;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(() => showToast('📋 コピーしました')).catch(() => fallbackCopy(text));
+  } else {
+    fallbackCopy(text);
+  }
+}
+function fallbackCopy(text) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0';
+  document.body.appendChild(ta);
+  ta.focus();
+  ta.select();
+  try { document.execCommand('copy'); showToast('📋 コピーしました'); }
+  catch(e) { showToast('コピーできませんでした'); }
+  document.body.removeChild(ta);
+}
+
 function formatDate(d) {
   if (!d) return '';
   const dt = new Date(d);
@@ -1287,6 +1311,10 @@ document.getElementById('viewSubmitBtn').addEventListener('click', () => {
 
 document.getElementById('viewEditBtn').addEventListener('click', () => {
   if (viewingId) openEdit(viewingId);
+});
+
+document.getElementById('viewCopyBtn').addEventListener('click', () => {
+  if (viewingId) copyHaiku(viewingId);
 });
 
 // オーバーレイクリックで閉じる
